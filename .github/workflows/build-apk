@@ -1,0 +1,180 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Generate Android launcher icon
+        run: npx capacitor-assets generate --android
+
+      - name: Sync web app
+        run: npx cap sync android
+
+      - name: Configure icon, system bars, and Android 15 safe theme
+        shell: bash
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          mkdir -p android/app/src/main/res/values
+          mkdir -p android/app/src/main/res/values-v35
+
+          # Use the same Cathetan Dhuwit logo for launcher and Recent Apps.
+          cp resources/icon.png android/app/src/main/res/drawable/cd_app_icon.png
+
+          # Notification icon stays separate.
+          cp resources/notification-icon.png android/app/src/main/res/drawable/ic_notification.png
+
+          # Base style: exists on all Android versions.
+          cat > android/app/src/main/res/values/cathetan_theme.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="CathetanDhuwit.NoEdgeToEdge" parent="AppTheme.NoActionBarLaunch" />
+          </resources>
+          XML
+
+          # Android 15: explicitly opt out of forced edge-to-edge.
+          # This keeps the status bar and navigation bar from covering the WebView.
+          cat > android/app/src/main/res/values-v35/cathetan_theme.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="CathetanDhuwit.NoEdgeToEdge" parent="AppTheme.NoActionBarLaunch">
+                  <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+              </style>
+          </resources>
+          XML
+
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          python3 - "$MANIFEST" <<'PY'
+          import sys
+          from pathlib import Path
+
+          p = Path(sys.argv[1])
+          s = p.read_text()
+
+          s = s.replace(
+              'android:icon="@mipmap/ic_launcher"',
+              'android:icon="@drawable/cd_app_icon"'
+          )
+          s = s.replace(
+              'android:roundIcon="@mipmap/ic_launcher_round"',
+              'android:roundIcon="@drawable/cd_app_icon"'
+          )
+
+          # Force the generated launcher activity to use our no-edge-to-edge theme.
+          s = s.replace(
+              'android:theme="@style/AppTheme.NoActionBarLaunch"',
+              'android:theme="@style/CathetanDhuwit.NoEdgeToEdge"'
+          )
+
+          p.write_text(s)
+          PY
+
+          MAIN=$(find android/app/src/main/java -name MainActivity.java | head -1)
+          if [ -z "$MAIN" ]; then
+            echo "MainActivity.java tidak ditemukan"
+            exit 1
+          fi
+
+          cat > "$MAIN" <<'JAVA'
+          package com.cathetandhuwit.app;
+
+          import android.app.ActivityManager;
+          import android.graphics.Color;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.view.Window;
+
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+
+              private void configureRecentAppsIcon() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                      ActivityManager.TaskDescription task =
+                              new ActivityManager.TaskDescription.Builder()
+                                      .setLabel("Cathetan Dhuwit")
+                                      .setIcon(R.drawable.cd_app_icon)
+                                      .build();
+                      setTaskDescription(task);
+                  } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                      setTaskDescription(new ActivityManager.TaskDescription(
+                              "Cathetan Dhuwit",
+                              android.graphics.BitmapFactory.decodeResource(
+                                      getResources(), R.drawable.cd_app_icon)
+                      ));
+                  }
+              }
+
+              private void configureSystemBars() {
+                  Window window = getWindow();
+
+                  // Normal non-edge-to-edge bars.
+                  window.setStatusBarColor(Color.rgb(9, 105, 245));
+                  window.setNavigationBarColor(Color.rgb(246, 247, 251));
+                  window.setStatusBarContrastEnforced(false);
+                  window.setNavigationBarContrastEnforced(false);
+
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      window.getDecorView().setSystemUiVisibility(0);
+                  }
+              }
+
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  configureSystemBars();
+                  configureRecentAppsIcon();
+              }
+
+              @Override
+              protected void onResume() {
+                  super.onResume();
+                  configureSystemBars();
+                  configureRecentAppsIcon();
+              }
+          }
+          JAVA
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cathetan-dhuwit-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
