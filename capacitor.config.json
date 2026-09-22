@@ -1,0 +1,6 @@
+{
+  "appId": "com.cathetandhuwit.app",
+  "appName": "Cathetan Dhuwit",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

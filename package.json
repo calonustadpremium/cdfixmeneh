@@ -1,0 +1,17 @@
+{
+  "name": "cathetan-dhuwit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cathetan Dhuwit - aplikasi pencatatan keuangan pribadi",
+  "scripts": {
+    "build": "echo Build handled by Capacitor/Gradle"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/cli": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}
