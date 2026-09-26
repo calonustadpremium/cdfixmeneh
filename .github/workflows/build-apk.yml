@@ -28,50 +28,27 @@ jobs:
       - name: Sync web app
         run: npx cap sync android
 
-      - name: Configure native launcher icon
+      - name: Force legacy PNG app icon
         shell: bash
         run: |
           set -e
+          SRC="resources/icon.png"
+          RES="android/app/src/main/res"
 
-          # Use resources/icon.png as the ONLY launcher icon source.
-          # Do not run capacitor-assets: it can create a different icon set.
-          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            mkdir -p "android/app/src/main/res/mipmap-${density}"
-            cp resources/icon.png "android/app/src/main/res/mipmap-${density}/ic_launcher.png"
-            cp resources/icon.png "android/app/src/main/res/mipmap-${density}/ic_launcher_round.png"
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p "$RES/mipmap-$d"
+            cp "$SRC" "$RES/mipmap-$d/ic_launcher.png"
+            cp "$SRC" "$RES/mipmap-$d/ic_launcher_round.png"
           done
 
-          # Remove any generated/default launcher resources before replacing them.
-          rm -rf android/app/src/main/res/mipmap-anydpi
-          rm -rf android/app/src/main/res/mipmap-anydpi-v26
-
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-
-          python3 - "$MANIFEST" <<'PY'
-          import sys
-          from pathlib import Path
-
-          p = Path(sys.argv[1])
-          s = p.read_text()
-
-          # Force the manifest to use our mipmap launcher icon.
-          s = s.replace('android:icon="@drawable/cd_app_icon"', 'android:icon="@mipmap/ic_launcher"')
-          s = s.replace('android:roundIcon="@drawable/cd_app_icon"', 'android:roundIcon="@mipmap/ic_launcher_round"')
-          s = s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher"')
-
-          if '<application' in s and 'android:icon="@mipmap/ic_launcher"' not in s:
-              s = s.replace('<application', '<application android:icon="@mipmap/ic_launcher"', 1)
-
-          if 'android:roundIcon="@mipmap/ic_launcher_round"' not in s and '<application' in s:
-              s = s.replace('<application', '<application android:roundIcon="@mipmap/ic_launcher_round"', 1)
-
-          p.write_text(s)
-          PY
-
-          echo "--- Manifest icon check ---"
-          grep -nE 'application|android:icon|android:roundIcon' "$MANIFEST" || true
-          echo "--- Launcher icon files ---"
-          find android/app/src/main/res -type f | grep -E 'mipmap-.*/ic_launcher(_round)?\.png' | sort
+          # Remove adaptive-icon XML resources and old foreground/background assets.
+          find "$RES" -type f \( \
+            -path '*/mipmap-anydpi*/ic_launcher.xml' -o \
+            -path '*/mipmap-anydpi*/ic_launcher_round.xml' -o \
+            -name 'ic_launcher_foreground.png' -o \
+            -name 'ic_launcher_background.xml' -o \
+            -name 'ic_launcher_background.png' \
+          \) -delete
 
       - name: Setup Java
         uses: actions/setup-java@v5
