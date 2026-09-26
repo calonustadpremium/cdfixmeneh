@@ -25,54 +25,25 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Generate Android launcher icon
-        run: npx capacitor-assets generate --android
-
       - name: Sync web app
         run: npx cap sync android
 
-      - name: Configure clean Android system bars and app icon
+      - name: Configure native launcher icon
         shell: bash
         run: |
           set -e
 
-          mkdir -p android/app/src/main/res/drawable
-          mkdir -p android/app/src/main/res/values
-          mkdir -p android/app/src/main/res/values-v35
+          # Use resources/icon.png as the ONLY launcher icon source.
+          # Do not run capacitor-assets: it can create a different icon set.
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p "android/app/src/main/res/mipmap-${density}"
+            cp resources/icon.png "android/app/src/main/res/mipmap-${density}/ic_launcher.png"
+            cp resources/icon.png "android/app/src/main/res/mipmap-${density}/ic_launcher_round.png"
+          done
 
-          # Use the Cathetan Dhuwit logo as the native app icon.
-          cp resources/icon.png android/app/src/main/res/drawable/cd_app_icon.png
-
-          # Base Android theme: normal system bars, no fullscreen flags.
-          cat > android/app/src/main/res/values/cathetan_theme.xml <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="CathetanDhuwit.NoEdgeToEdge" parent="AppTheme.NoActionBarLaunch">
-                  <item name="android:windowNoTitle">true</item>
-                  <item name="android:statusBarColor">#0969F5</item>
-                  <item name="android:navigationBarColor">#F6F7FB</item>
-                  <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:windowLightNavigationBar">true</item>
-                  <item name="android:windowActionModeOverlay">true</item>
-              </style>
-          </resources>
-          XML
-
-          # Android 15: opt out of forced edge-to-edge so the WebView does not
-          # cover the status bar and navigation bar.
-          cat > android/app/src/main/res/values-v35/cathetan_theme.xml <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="CathetanDhuwit.NoEdgeToEdge" parent="AppTheme.NoActionBarLaunch">
-                  <item name="android:windowNoTitle">true</item>
-                  <item name="android:statusBarColor">#0969F5</item>
-                  <item name="android:navigationBarColor">#F6F7FB</item>
-                  <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:windowLightNavigationBar">true</item>
-                  <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
-              </style>
-          </resources>
-          XML
+          # Remove any generated/default launcher resources before replacing them.
+          rm -rf android/app/src/main/res/mipmap-anydpi
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
 
           MANIFEST=android/app/src/main/AndroidManifest.xml
 
@@ -83,25 +54,24 @@ jobs:
           p = Path(sys.argv[1])
           s = p.read_text()
 
-          # Replace generated launcher icon references.
-          s = s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@drawable/cd_app_icon"')
-          s = s.replace('android:roundIcon="@mipmap/ic_launcher_round"', 'android:roundIcon="@drawable/cd_app_icon"')
+          # Force the manifest to use our mipmap launcher icon.
+          s = s.replace('android:icon="@drawable/cd_app_icon"', 'android:icon="@mipmap/ic_launcher"')
+          s = s.replace('android:roundIcon="@drawable/cd_app_icon"', 'android:roundIcon="@mipmap/ic_launcher_round"')
+          s = s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher"')
 
-          # Make sure the application has our icon even if the generated manifest differs.
-          if '<application' in s and 'android:icon="@drawable/cd_app_icon"' not in s:
-              s = s.replace('<application', '<application android:icon="@drawable/cd_app_icon"', 1)
+          if '<application' in s and 'android:icon="@mipmap/ic_launcher"' not in s:
+              s = s.replace('<application', '<application android:icon="@mipmap/ic_launcher"', 1)
 
-          # Force the Capacitor activity to use our normal system-bar theme.
-          s = s.replace(
-              'android:theme="@style/AppTheme.NoActionBarLaunch"',
-              'android:theme="@style/CathetanDhuwit.NoEdgeToEdge"'
-          )
+          if 'android:roundIcon="@mipmap/ic_launcher_round"' not in s and '<application' in s:
+              s = s.replace('<application', '<application android:roundIcon="@mipmap/ic_launcher_round"', 1)
 
           p.write_text(s)
           PY
 
-          echo "--- Manifest icon/theme check ---"
-          grep -nE 'application|android:icon|android:roundIcon|android:theme' "$MANIFEST" || true
+          echo "--- Manifest icon check ---"
+          grep -nE 'application|android:icon|android:roundIcon' "$MANIFEST" || true
+          echo "--- Launcher icon files ---"
+          find android/app/src/main/res -type f | grep -E 'mipmap-.*/ic_launcher(_round)?\.png' | sort
 
       - name: Setup Java
         uses: actions/setup-java@v5
