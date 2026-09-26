@@ -28,6 +28,22 @@ jobs:
       - name: Sync web app
         run: npx cap sync android
 
+      - name: Replace legacy Capacitor splash artwork
+        shell: bash
+        run: |
+          set -e
+          RES="android/app/src/main/res"
+          SRC="resources/splash.png"
+
+          # Replace every legacy Capacitor splash image that can show
+          # before the WebView splash. This removes the default X artwork.
+          find "$RES" -type f -name 'splash.png' -delete
+
+          for f in $(find "$RES" -type d \(             -name 'drawable' -o             -name 'drawable-*'           \)); do
+            mkdir -p "$f"
+            cp "$SRC" "$f/splash.png"
+          done
+
       - name: Force single PNG app icon
         shell: bash
         run: |
