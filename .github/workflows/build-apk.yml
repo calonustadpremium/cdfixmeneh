@@ -33,7 +33,7 @@ jobs:
         run: |
           set -e
           RES="android/app/src/main/res"
-          SRC="resources/splash.png"
+          SRC="resources/icon.png"
 
           # Replace every legacy Capacitor splash image that can show
           # before the WebView splash. This removes the default X artwork.
