@@ -74,6 +74,50 @@ jobs:
           p.write_text(s)
           PY2
 
+      - name: Configure Android system splash icon
+        shell: bash
+        run: |
+          set -e
+          RES="android/app/src/main/res"
+
+          # Use the Cathetan Dhuwit logo for the Android 12+ system splash.
+          cp resources/icon.png "$RES/drawable/cd_splash_icon.png"
+
+          # Update the Capacitor launch theme without changing the app UI theme.
+          STYLE=$(find "$RES" -path '*/values/styles.xml' -type f | head -1)
+          if [ -z "$STYLE" ]; then
+            echo "styles.xml not found"
+            exit 1
+          fi
+
+          python3 - "$STYLE" <<'PY2'
+          import sys
+          from pathlib import Path
+          p = Path(sys.argv[1])
+          s = p.read_text()
+          marker = '<style name="AppTheme.NoActionBarLaunch"'
+          start = s.find(marker)
+          if start == -1:
+              raise SystemExit("AppTheme.NoActionBarLaunch not found")
+          end = s.find('</style>', start)
+          if end == -1:
+              raise SystemExit("Launch style closing tag not found")
+          end += len('</style>')
+          block = s[start:end]
+
+          import re
+          block = re.sub(r'\s*<item name="windowSplashScreenAnimatedIcon">.*?</item>', '', block, flags=re.S)
+          block = re.sub(r'\s*<item name="windowSplashScreenBackground">.*?</item>', '', block, flags=re.S)
+          block = block.replace(
+              '</style>',
+              '\n        <item name="windowSplashScreenBackground">#0A69F5</item>\n'
+              '        <item name="windowSplashScreenAnimatedIcon">@drawable/cd_splash_icon</item>\n'
+              '</style>'
+          )
+          s = s[:start] + block + s[end:]
+          p.write_text(s)
+          PY2
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
