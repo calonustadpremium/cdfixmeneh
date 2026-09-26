@@ -33,16 +33,15 @@ jobs:
         run: |
           set -e
           RES="android/app/src/main/res"
-          SRC="resources/icon.png"
+          SRC="resources/splash.png"
 
-          # Replace every legacy Capacitor splash image that can show
-          # before the WebView splash. This removes the default X artwork.
+          # Remove every generated legacy splash image first.
           find "$RES" -type f -name 'splash.png' -delete
 
-          for f in $(find "$RES" -type d \(             -name 'drawable' -o             -name 'drawable-*'           \)); do
-            mkdir -p "$f"
-            cp "$SRC" "$f/splash.png"
-          done
+          # Use a nodpi splash canvas so Android does not enlarge the logo
+          # according to density. The logo is already sized inside splash.png.
+          mkdir -p "$RES/drawable-nodpi"
+          cp "$SRC" "$RES/drawable-nodpi/splash.png"
 
       - name: Force single PNG app icon
         shell: bash
@@ -97,7 +96,7 @@ jobs:
           RES="android/app/src/main/res"
 
           # Use the Cathetan Dhuwit logo for the Android 12+ system splash.
-          cp resources/icon.png "$RES/drawable/cd_splash_icon.png"
+          cp resources/system-splash-icon.png "$RES/drawable-nodpi/cd_splash_icon.png"
 
           # Update the Capacitor launch theme without changing the app UI theme.
           STYLE=$(find "$RES" -path '*/values/styles.xml' -type f | head -1)
